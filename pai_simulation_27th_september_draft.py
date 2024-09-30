@@ -114,7 +114,7 @@ baseline_interventions = [
 ]
 
 # Define selection probabilities (they should sum to 1)
-baseline_intervention_probs = [0.4, 0.3, 0.2, 0.1]  # Example probabilities
+baseline_intervention_probs = [0.25, 0.25, 0.25, 0.25]  # Example probabilities
 
 def select_intervention_personalized(row):
     """Selects intervention based on user and content features."""
