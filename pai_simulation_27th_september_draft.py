@@ -466,12 +466,12 @@ if __name__ == "__main__":
 
     # Plotting average difference between Personalized and Baseline Systems
     plt.figure(figsize=(12, 6))
-    sns.lineplot(data=results, x='prebunking_effectiveness', y='avg_difference', hue='susceptibility_decay', style='num_users', markers=True, dashes=False)
+    sns.barplot(data=results, x='prebunking_effectiveness', y='avg_difference', hue='susceptibility_decay')
     plt.title('Average Difference in Effectiveness (Personalized - Baseline)')
     plt.xlabel('Prebunking Effectiveness')
     plt.ylabel('Average Difference in Effectiveness (%)')
     plt.legend(title='Susceptibility Decay')
-    plt.grid(True)
+    plt.grid(True, axis='y')
     plt.show()
 
     # Additional Visualization for Content Factor Weights
