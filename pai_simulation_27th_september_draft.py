@@ -149,13 +149,14 @@ def intervention_effectiveness_personalized(row, parameters):
     if row['susceptible'] == 1:
         base_effectiveness = 0.0
         if row['intervention'] == 'Prebunking (Context)':
-            base_effectiveness = prebunking_effectiveness if row['CMQ_score'] > 4 else 0.5
+            base_effectiveness = prebunking_effectiveness if row['CMQ_score'] > 4 and row['topic'] == 'politics' else 0.5
         elif row['intervention'] == 'Boosting (Educational Video)':
-            base_effectiveness = boosting_effectiveness if row['CRT_score'] < 4 else 0.5
+            base_effectiveness = boosting_effectiveness if row['CRT_score'] < 4 and row['complexity'] > 0.5 else 0.5
         elif row['intervention'] == 'Standard Warning':
             base_effectiveness = standard_warning_effectiveness
-        elif row['intervention'] == 'Nudge Warning':  # Handle 'Nudge Warning'
-            base_effectiveness = nudge_warning_effectiveness  # Define base effectiveness for 'Nudge Warning'
+        elif row['intervention'] == 'Nudge Warning':
+            base_effectiveness = nudge_warning_effectiveness if row['political_ideology'] == 'conservative' else 0.5
+        
         # Adjust effectiveness based on content complexity and emotional impact
         content_factor = (1 - row['complexity']) * content_weight_complexity + (1 - row['emotional_impact']) * content_weight_emotional
         effectiveness = base_effectiveness * content_factor
@@ -368,10 +369,10 @@ if __name__ == "__main__":
     import itertools
 
     # Define parameter ranges
-    num_users_list = [100]  # Adjust as needed
-    susceptibility_decay_list = [0, 0.1]
-    prebunking_effectiveness_list = [0.7]
-    num_content_list = [100]
+    num_users_list = [100, 200]  # Adjust as needed
+    susceptibility_decay_list = [0, 0.05, 0.1]
+    prebunking_effectiveness_list = [0.8]
+    num_content_list = [100, 200]
     content_weights_list = [
         (0.5, 0.5),
         (0.7, 0.3),
@@ -399,16 +400,16 @@ if __name__ == "__main__":
             'time_steps': 10,  # Adjust as needed
             'susceptibility_decay': susceptibility_decay,
             'prebunking_effectiveness': prebunking_effectiveness,
-            'boosting_effectiveness': 0.7,  # You can also vary this
+            'boosting_effectiveness': 0.8,  # You can also vary this
             'standard_warning_effectiveness': 0.5,
-            'nudge_warning_effectiveness': 0.6,
+            'nudge_warning_effectiveness': 0.8,
             'content_weight_complexity': content_weight_complexity,
             'content_weight_emotional': content_weight_emotional,
             'baseline_effectiveness': {
                 'Standard Warning': 0.5,
-                'Informational Message': 0.4,
-                'Neutral Feedback': 0.3,
-                'Engagement Prompt': 0.6
+                'Informational Message': 0.5,
+                'Neutral Feedback': 0.5,
+                'Engagement Prompt': 0.5
             },
         }
 
