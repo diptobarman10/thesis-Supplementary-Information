@@ -370,7 +370,7 @@ if __name__ == "__main__":
 
     # Define parameter ranges
     num_users_list = [100, 200]  # Adjust as needed
-    susceptibility_decay_list = [0, 0.05, 0.1]
+    susceptibility_decay_list = [0]
     prebunking_effectiveness_list = [0.8]
     num_content_list = [100, 200]
     content_weights_list = [
