@@ -64,7 +64,7 @@ def select_best_model(interactions):
 # Example usage:
 if __name__ == "__main__":
     # Assuming you have a function to generate interactions
-    from pai_simulation_27th_september_draft import generate_user_profiles, generate_content_items, simulate_interactions
+    from pai_simulation_27th_september_Final import generate_user_profiles, generate_content_items, simulate_interactions
     
     num_users = 100
     num_content = 100
