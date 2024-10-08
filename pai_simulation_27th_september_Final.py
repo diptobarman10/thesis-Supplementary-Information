@@ -371,12 +371,16 @@ if __name__ == "__main__":
     # Define parameter ranges
     num_users_list = [100, 200]  # Adjust as needed
     susceptibility_decay_list = [0]
-    prebunking_effectiveness_list = [0.8]
+    prebunking_effectiveness_list = [0.6, 0.7, 0.8]
+    nudge_effectiveness_list = [0.6, 0.7, 0.8]
+    boosting_effectiveness_list = [0.6, 0.7, 0.8]
     num_content_list = [100, 200]
     content_weights_list = [
         (0.5, 0.5),
         (0.7, 0.3),
-        (0.3, 0.7)
+        (0.3, 0.7),
+        (0.3, 0.3),
+        (0.7, 0.7)
     ]  # List of tuples (content_weight_complexity, content_weight_emotional)
 
     # Create a list of all combinations
@@ -384,6 +388,8 @@ if __name__ == "__main__":
         num_users_list,
         susceptibility_decay_list,
         prebunking_effectiveness_list,
+        nudge_effectiveness_list,
+        boosting_effectiveness_list,
         num_content_list,
         content_weights_list
     ))
@@ -392,17 +398,29 @@ if __name__ == "__main__":
     results_list = []
     cumulative_data = []
 
-    for num_users, susceptibility_decay, prebunking_effectiveness, num_content, (content_weight_complexity, content_weight_emotional) in parameter_grid:
-        print(f"\nRunning simulation with num_users={num_users}, susceptibility_decay={susceptibility_decay}, prebunking_effectiveness={prebunking_effectiveness}, num_content={num_content}, content_weights=({content_weight_complexity}, {content_weight_emotional})")
+    for (num_users, susceptibility_decay, prebunking_effectiveness, 
+         nudge_effectiveness, boosting_effectiveness, num_content, 
+         content_weights) in parameter_grid:
+        
+        content_weight_complexity, content_weight_emotional = content_weights
+        
+        print(f"\nRunning simulation with num_users={num_users}, "
+              f"susceptibility_decay={susceptibility_decay}, "
+              f"prebunking_effectiveness={prebunking_effectiveness}, "
+              f"nudge_effectiveness={nudge_effectiveness}, "
+              f"boosting_effectiveness={boosting_effectiveness}, "
+              f"num_content={num_content}, "
+              f"content_weights=({content_weight_complexity}, {content_weight_emotional})")
+        
         parameters = {
             'num_users': num_users,
             'num_content': num_content,
             'time_steps': 10,  # Adjust as needed
             'susceptibility_decay': susceptibility_decay,
             'prebunking_effectiveness': prebunking_effectiveness,
-            'boosting_effectiveness': 0.8,  # You can also vary this
+            'boosting_effectiveness': boosting_effectiveness,
             'standard_warning_effectiveness': 0.5,
-            'nudge_warning_effectiveness': 0.8,
+            'nudge_warning_effectiveness': nudge_effectiveness,
             'content_weight_complexity': content_weight_complexity,
             'content_weight_emotional': content_weight_emotional,
             'baseline_effectiveness': {
@@ -421,6 +439,8 @@ if __name__ == "__main__":
             'num_users': num_users,
             'susceptibility_decay': susceptibility_decay,
             'prebunking_effectiveness': prebunking_effectiveness,
+            'nudge_warning_effectiveness': nudge_effectiveness,  # Add this line
+            'boosting_effectiveness': boosting_effectiveness,  # Add this line
             'num_content': num_content,
             'content_weight_complexity': content_weight_complexity,
             'content_weight_emotional': content_weight_emotional,
@@ -440,6 +460,11 @@ if __name__ == "__main__":
 
     # Create the results DataFrame
     results = pd.DataFrame(results_list)
+
+    # Save results to CSV
+    csv_filename = 'simulation_results.csv'
+    results.to_csv(csv_filename, index=False)
+    print(f"\nResults saved to {csv_filename}")
 
     # Display the results
     print("\nSimulation Results:")
