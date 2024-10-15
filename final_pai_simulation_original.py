@@ -65,10 +65,8 @@ def simulate_interactions(user_profiles, content_items, time_steps):
     """Simulates user-content interactions over multiple time steps."""
     interactions_list = []
     for t in range(time_steps):
-        # Update user susceptibility based on past interventions
-        user_profiles['susceptibility_score'] = user_profiles['susceptibility_score'] * (1 - 0.1 * user_profiles['past_interventions'])
         # Ensure susceptibility_score stays between 0 and 1
-        user_profiles['susceptibility_score'] = user_profiles['susceptibility_score'].clip(0, 1)
+        user_profiles['susceptibility_score'] = user_profiles['susceptibility_score']
         # Merge user profiles and content items to simulate interactions
         interactions = pd.merge(user_profiles.assign(key=1), content_items.assign(key=1), on='key').drop('key', axis=1)
         # Create a synthetic target variable: 1 if user is susceptible, 0 otherwise
@@ -256,9 +254,9 @@ def simulate_interventions_over_time_baseline(interactions, model, user_profiles
 
 def main_comparison():
     # Parameters
-    num_users = 300  # Number of users
-    num_content = 300  # Number of content items
-    time_steps = 100  # Number of time steps to simulate
+    num_users = 100  # Number of users
+    num_content = 100  # Number of content items
+    time_steps = 10  # Number of time steps to simulate
 
     # Generate synthetic user profiles for both systems
     print("Generating synthetic user profiles for Personalized and Baseline systems...")
@@ -524,6 +522,31 @@ def main_comparison():
     
 
     
+    # Calculate statistics for personalized system
+    total_interactions_pers = len(interactions_personalized_all)
+    not_susceptible_pers = (interactions_personalized_all['susceptible'] == 0).sum()
+    susceptible_pers = (interactions_personalized_all['susceptible'] == 1).sum()
+    effective_interventions_pers = (interactions_personalized_all['effective'] == 1).sum()
+
+    # Calculate statistics for baseline system
+    total_interactions_base = len(interactions_baseline_all)
+    not_susceptible_base = (interactions_baseline_all['susceptible'] == 0).sum()
+    susceptible_base = (interactions_baseline_all['susceptible'] == 1).sum()
+    effective_interventions_base = (interactions_baseline_all['effective'] == 1).sum()
+
+    print("\n--- Interaction Statistics ---")
+    print("Personalized System:")
+    print(f"Total Interactions: {total_interactions_pers}")
+    print(f"Not Susceptible to Misinformation: {not_susceptible_pers}")
+    print(f"Susceptible to Misinformation: {susceptible_pers}")
+    print(f"Effective Interventions: {effective_interventions_pers}")
+
+    print("\nBaseline System:")
+    print(f"Total Interactions: {total_interactions_base}")
+    print(f"Not Susceptible to Misinformation: {not_susceptible_base}")
+    print(f"Susceptible to Misinformation: {susceptible_base}")
+    print(f"Effective Interventions: {effective_interventions_base}")
+
 # -------------------------------
 # Execute the Comparison
 # -------------------------------

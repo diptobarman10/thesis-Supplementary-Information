@@ -120,8 +120,7 @@ def select_intervention_personalized(row):
     """Selects intervention based on user and content features."""
     # New condition for political ideology towards conservative
     if row['political_ideology'] == 'conservative':
-        return 'Nudge Warning'  # Assign 'Nudge Warning' to conservative users
-    # Existing personalized intervention logic
+        return 'Nudge Warning'  
     if row['CMQ_score'] > 4 and row['topic'] == 'politics':
         return 'Prebunking (Context)'
     elif row['CRT_score'] < 4 and row['complexity'] > 0.5:
@@ -371,8 +370,8 @@ if __name__ == "__main__":
     # Define parameter ranges
     num_users_list = [100, 200]  # Adjust as needed
     susceptibility_decay_list = [0]
-    prebunking_effectiveness_list = [0.6, 0.7, 0.8]
-    nudge_effectiveness_list = [0.6, 0.7, 0.8]
+    prebunking_effectiveness_list = [0.5, 0.6, 0.7, 0.8]
+    nudge_effectiveness_list = [0.5, 0.6, 0.7, 0.8]
     boosting_effectiveness_list = [0.6, 0.7, 0.8]
     num_content_list = [100, 200]
     content_weights_list = [
