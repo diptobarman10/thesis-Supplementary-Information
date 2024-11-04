@@ -316,9 +316,9 @@ def simulate_interventions_over_time_baseline(interactions, model_tuple, user_pr
 class SimulationConfig:
     """Configuration class for simulation parameters"""
     def __init__(self):
-        self.num_users = 100
-        self.num_content = 100
-        self.time_steps = 10
+        self.num_users = 300
+        self.num_content = 300
+        self.time_steps = 100
         self.random_seed = 42
         self.test_size = 0.2
         self.learning_rate = 0.1  # New parameter for learning effect
@@ -403,8 +403,8 @@ def main_comparison():
         
         # Run simulations for each time step
         for t in range(config.time_steps):
-            # Simulate interactions
-            interactions = simulate_interactions(user_profiles, content_items, 1)
+            # Simulate interactions for current time step
+            interactions = simulate_interactions(user_profiles, content_items, t)
             
             # Train model on current interactions
             model_tuple = train_model(interactions)
