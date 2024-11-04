@@ -116,26 +116,31 @@ class InterventionSystem:
 # Interaction Simulation
 # -------------------------------
 
-def simulate_interactions(user_profiles, content_items, time_steps):
-    """Simulates user-content interactions over multiple time steps."""
-    interactions_list = []
-    for t in range(time_steps):
-        # Ensure susceptibility_score stays between 0 and 1
-        user_profiles['susceptibility_score'] = user_profiles['susceptibility_score']
-        # Merge user profiles and content items to simulate interactions
-        interactions = pd.merge(user_profiles.assign(key=1), content_items.assign(key=1), on='key').drop('key', axis=1)
-        # Create a synthetic target variable: 1 if user is susceptible, 0 otherwise
-        interactions['susceptible'] = interactions.apply(lambda row: 
-            int(
-                row['is_misinformation'] == 1 and
-                row['susceptibility_score'] > np.random.rand()
-            ), axis=1)
-        # Add time step
-        interactions['time_step'] = t
-        interactions_list.append(interactions)
-    # Concatenate all interactions
-    all_interactions = pd.concat(interactions_list, ignore_index=True)
-    return all_interactions
+def simulate_interactions(user_profiles, content_items, time_step):
+    """Simulates user-content interactions for a single time step."""
+    # Ensure susceptibility_score stays between 0 and 1
+    user_profiles['susceptibility_score'] = user_profiles['susceptibility_score'].clip(0, 1)
+    
+    # Create interactions for this time step
+    interactions = pd.merge(
+        user_profiles.assign(key=1),
+        content_items.assign(key=1),
+        on='key'
+    ).drop('key', axis=1)
+    
+    # Create a synthetic target variable: 1 if user is susceptible, 0 otherwise
+    interactions['susceptible'] = interactions.apply(
+        lambda row: int(
+            row['is_misinformation'] == 1 and
+            row['susceptibility_score'] > np.random.rand()
+        ),
+        axis=1
+    )
+    
+    # Add time step
+    interactions['time_step'] = time_step
+    
+    return interactions
 
 # -------------------------------
 # Feature Encoding
@@ -372,6 +377,64 @@ class PerformanceMetrics:
         }
         return report
 
+def analyze_simulation_results(personalized_metrics, baseline_metrics):
+    """
+    Perform statistical analysis on the simulation results
+    """
+    # Extract effectiveness rates from both systems
+    personalized_rates = np.array(personalized_metrics.metrics['effectiveness_rates'])
+    baseline_rates = np.array(baseline_metrics.metrics['effectiveness_rates'])
+    
+    # Perform t-test
+    t_stat, t_pvalue = ttest_ind(personalized_rates, baseline_rates)
+    
+    # Perform Mann-Whitney U test
+    u_stat, u_pvalue = mannwhitneyu(personalized_rates, baseline_rates)
+    
+    # Calculate average effectiveness rates
+    personalized_avg = np.mean(personalized_rates) * 100
+    baseline_avg = np.mean(baseline_rates) * 100
+    
+    return {
+        't_test': {'statistic': t_stat, 'p_value': t_pvalue},
+        'mann_whitney': {'statistic': u_stat, 'p_value': u_pvalue},
+        'averages': {
+            'personalized': personalized_avg,
+            'baseline': baseline_avg
+        }
+    }
+
+def plot_effectiveness_trends(personalized_metrics, baseline_metrics):
+    """
+    Create Figure 28: Effectiveness trends comparison
+    """
+    plt.figure(figsize=(10, 6))
+    plt.plot(personalized_metrics.metrics['effectiveness_rates'], label='Personalized System')
+    plt.plot(baseline_metrics.metrics['effectiveness_rates'], label='Baseline System')
+    plt.xlabel('Run Number')
+    plt.ylabel('Effectiveness Rate')
+    plt.title('Comparison of Effective Interventions between Systems')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def plot_cumulative_effectiveness(personalized_metrics, baseline_metrics):
+    """
+    Create Figure 29: Cumulative effectiveness comparison
+    """
+    personalized_cumsum = np.cumsum(personalized_metrics.metrics['effectiveness_rates'])
+    baseline_cumsum = np.cumsum(baseline_metrics.metrics['effectiveness_rates'])
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(personalized_cumsum, label='Personalized System')
+    plt.plot(baseline_cumsum, label='Baseline System')
+    plt.xlabel('Run Number')
+    plt.ylabel('Cumulative Effective Interventions')
+    plt.title('Cumulative Effectiveness of Interventions')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
 def main_comparison():
     # Initialize configuration
     config = SimulationConfig()
@@ -392,10 +455,6 @@ def main_comparison():
             'sentiment': np.random.choice(['positive', 'neutral', 'negative'], config.num_content),
             'is_misinformation': np.random.choice([0, 1], config.num_content, p=[0.7, 0.3])
         })
-        
-        # Initialize systems
-        personalized_system = InterventionSystem(is_personalized=True)
-        baseline_system = InterventionSystem(is_personalized=False)
         
         # Initialize metrics
         personalized_metrics = PerformanceMetrics()
@@ -422,24 +481,31 @@ def main_comparison():
             
             # Update baseline metrics
             baseline_metrics.update_metrics(baseline_results, user_profiles_b)
+            
+            # Update user profiles based on interventions (optional)
+            user_profiles = user_profiles_p  # Or implement a more sophisticated update strategy
         
-        # Generate final reports
-        personalized_report = personalized_metrics.generate_report()
-        baseline_report = baseline_metrics.generate_report()
+        # Generate final reports and analysis
+        statistical_results = analyze_simulation_results(personalized_metrics, baseline_metrics)
         
-        # Print comparison results
-        print("\nFinal Results:")
-        print("Personalized System:")
-        print(f"Average Effectiveness: {personalized_report['average_effectiveness']:.2f}")
-        print(f"Susceptibility Reduction: {personalized_report['susceptibility_reduction']:.2f}")
-        print(f"Most Used Intervention: {personalized_report['most_used_intervention']}")
+        # Print results
+        print("\nStatistical Analysis:")
+        print(f"T-test Results:")
+        print(f"T-statistic: {statistical_results['t_test']['statistic']:.4f}")
+        print(f"P-value: {statistical_results['t_test']['p_value']:.4f}")
         
-        print("\nBaseline System:")
-        print(f"Average Effectiveness: {baseline_report['average_effectiveness']:.2f}")
-        print(f"Susceptibility Reduction: {baseline_report['susceptibility_reduction']:.2f}")
-        print(f"Most Used Intervention: {baseline_report['most_used_intervention']}")
+        print(f"\nMann-Whitney U Test Results:")
+        print(f"U-statistic: {statistical_results['mann_whitney']['statistic']:.4f}")
+        print(f"P-value: {statistical_results['mann_whitney']['p_value']:.4f}")
         
-        # Log results
+        print(f"\nAverage Effectiveness Rates:")
+        print(f"Personalized System: {statistical_results['averages']['personalized']:.2f}%")
+        print(f"Baseline System: {statistical_results['averages']['baseline']:.2f}%")
+        
+        # Generate plots
+        plot_effectiveness_trends(personalized_metrics, baseline_metrics)
+        plot_cumulative_effectiveness(personalized_metrics, baseline_metrics)
+        
         logging.info("Simulation completed successfully")
         
     except Exception as e:
