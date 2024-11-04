@@ -8,6 +8,7 @@ import warnings
 import random
 from scipy.stats import ttest_ind
 from scipy.stats import mannwhitneyu
+import logging
 
 # Optional: For visualization
 import matplotlib.pyplot as plt
@@ -19,43 +20,97 @@ warnings.filterwarnings("ignore")
 np.random.seed(42)
 random.seed(42)
 
+# Add after imports
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+def safe_divide(numerator, denominator):
+    """Safely perform division with error handling"""
+    try:
+        return numerator / denominator if denominator != 0 else 0
+    except Exception as e:
+        logging.error(f"Division error: {e}")
+        return 0
+
+# Update the effectiveness calculation in simulation functions
+def calculate_effectiveness(effective, total):
+    """Calculate effectiveness with error handling"""
+    try:
+        return safe_divide(effective, total) * 100
+    except Exception as e:
+        logging.error(f"Error calculating effectiveness: {e}")
+        return 0
+
 # -------------------------------
 # Data Generation Functions
 # -------------------------------
 
-def generate_user_profiles(num_users):
-    """Generates synthetic user profiles."""
-    user_profiles = pd.DataFrame({
-        'user_id': range(num_users),
-        'CRT_score': np.random.randint(0, 8, num_users),
-        'CMQ_score': np.random.randint(0, 8, num_users),
-        'openness': np.random.rand(num_users),
-        'conscientiousness': np.random.rand(num_users),
-        'extraversion': np.random.rand(num_users),
-        'agreeableness': np.random.rand(num_users),
-        'neuroticism': np.random.rand(num_users),
-        'political_ideology': np.random.choice(['liberal', 'moderate', 'conservative'], num_users),
-        'age': np.random.randint(18, 65, num_users),
-        'gender': np.random.choice(['male', 'female', 'other'], num_users),
-        'education': np.random.choice(['high_school', 'bachelor', 'master', 'phd'], num_users),
-        'past_interventions': np.zeros(num_users),  # Initialize past interventions
-        'susceptibility_score': np.random.rand(num_users)  # Initial susceptibility score
-    })
-    return user_profiles
+class UserProfile:
+    """Class to manage user profiles and their attributes"""
+    def __init__(self, num_users):
+        self.profiles = self._generate_profiles(num_users)
+    
+    def _generate_profiles(self, num_users):
+        """Generates synthetic user profiles."""
+        return pd.DataFrame({
+            'user_id': range(num_users),
+            'CRT_score': np.random.randint(0, 8, num_users),
+            'CMQ_score': np.random.randint(0, 8, num_users),
+            'openness': np.random.rand(num_users),
+            'conscientiousness': np.random.rand(num_users),
+            'extraversion': np.random.rand(num_users),
+            'agreeableness': np.random.rand(num_users),
+            'neuroticism': np.random.rand(num_users),
+            'political_ideology': np.random.choice(['liberal', 'moderate', 'conservative'], num_users),
+            'age': np.random.randint(18, 65, num_users),
+            'gender': np.random.choice(['male', 'female', 'other'], num_users),
+            'education': np.random.choice(['high_school', 'bachelor', 'master', 'phd'], num_users),
+            'past_interventions': np.zeros(num_users),
+            'susceptibility_score': np.random.rand(num_users)
+        })
+    
+    def update_susceptibility(self, user_ids, change):
+        """Update susceptibility scores for given users"""
+        self.profiles.loc[self.profiles['user_id'].isin(user_ids), 'susceptibility_score'] += change
+        # Ensure scores stay between 0 and 1
+        self.profiles['susceptibility_score'] = self.profiles['susceptibility_score'].clip(0, 1)
 
-def generate_content_items(num_items):
-    """Generates synthetic content items."""
-    content_items = pd.DataFrame({
-        'content_id': range(num_items),
-        'is_misinformation': np.random.choice([0, 1], num_items, p=[0.7, 0.3]),
-        'topic': np.random.choice(['health', 'politics', 'technology', 'sports'], num_items),
-        'sentiment': np.random.choice(['positive', 'neutral', 'negative'], num_items),
-        'complexity': np.random.rand(num_items),
-        'readability_score': np.random.rand(num_items),
-        'emotional_impact': np.random.rand(num_items),
-        'credibility_indicator': np.random.rand(num_items)
-    })
-    return content_items
+class InterventionSystem:
+    """Class to manage intervention selection and effectiveness"""
+    def __init__(self, is_personalized=True):
+        self.is_personalized = is_personalized
+        self.interventions = {
+            'Standard Warning': 0.5,
+            'Informational Message': 0.5,
+            'Neutral Feedback': 0.5,
+            'Engagement Prompt': 0.5,
+            'Prebunking (Context)': 0.8,
+            'Boosting (Educational Video)': 0.8,
+            'Nudge Warning': 0.8
+        }
+    
+    def select_intervention(self, row):
+        """Select appropriate intervention based on system type"""
+        if self.is_personalized:
+            return self._select_personalized(row)
+        return self._select_baseline(row)
+    
+    def _select_personalized(self, row):
+        """Select intervention based on personalized criteria"""
+        if row['political_ideology'] == 'conservative':
+            return 'Nudge Warning'
+        if row['CMQ_score'] > 4 and row['topic'] == 'politics':
+            return 'Prebunking (Context)'
+        elif row['CRT_score'] < 4 and row['complexity'] > 0.5:
+            return 'Boosting (Educational Video)'
+        else:
+            return 'Standard Warning'
+    
+    def _select_baseline(self, row):
+        """Randomly select from baseline interventions"""
+        return random.choice(list(self.interventions.keys()))
 
 # -------------------------------
 # Interaction Simulation
@@ -103,8 +158,12 @@ def train_model(interactions):
     """Trains an XGBoost classifier to predict susceptibility."""
     # Encode features
     interactions_encoded = encode_features(interactions)
-    # Define features and target
-    X = interactions_encoded.drop(['user_id', 'content_id', 'susceptible', 'is_misinformation', 'time_step'], axis=1)
+    # Define features and target - exclude intervention column if it exists
+    columns_to_drop = ['user_id', 'content_id', 'susceptible', 'is_misinformation', 
+                      'time_step', 'intervention']
+    feature_columns = [col for col in interactions_encoded.columns 
+                      if col not in columns_to_drop]
+    X = interactions_encoded[feature_columns]
     y = interactions_encoded['susceptible']
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -116,7 +175,7 @@ def train_model(interactions):
     # Evaluate
     accuracy = accuracy_score(y_test, y_pred)
     print(f"Model Accuracy: {accuracy:.2f}")
-    return model
+    return model, feature_columns  # Return both model and feature columns
 
 # -------------------------------
 # Intervention Selection Functions
@@ -200,10 +259,11 @@ def intervention_effectiveness_baseline(row):
 # Intervention Simulation Functions
 # -------------------------------
 
-def simulate_interventions_over_time_personalized(interactions, model, user_profiles):
+def simulate_interventions_over_time_personalized(interactions, model_tuple, user_profiles):
     """Simulates personalized interventions and updates user profiles."""
+    model, feature_columns = model_tuple  # Unpack the tuple
     interactions_encoded = encode_features(interactions)
-    X = interactions_encoded.drop(['user_id', 'content_id', 'susceptible', 'is_misinformation', 'time_step'], axis=1)
+    X = interactions_encoded[feature_columns]  # Use only the selected feature columns
     interactions['predicted_susceptibility'] = model.predict_proba(X)[:,1]
     # Select interventions (Personalized)
     interactions['intervention'] = interactions.apply(select_intervention_personalized, axis=1)
@@ -224,10 +284,11 @@ def simulate_interventions_over_time_personalized(interactions, model, user_prof
     
     return interactions, user_profiles, total_effective, total_susceptible
 
-def simulate_interventions_over_time_baseline(interactions, model, user_profiles):
+def simulate_interventions_over_time_baseline(interactions, model_tuple, user_profiles):
     """Simulates baseline interventions and updates user profiles."""
+    model, feature_columns = model_tuple  # Unpack the tuple
     interactions_encoded = encode_features(interactions)
-    X = interactions_encoded.drop(['user_id', 'content_id', 'susceptible', 'is_misinformation', 'time_step'], axis=1)
+    X = interactions_encoded[feature_columns]  # Use only the selected feature columns
     interactions['predicted_susceptibility'] = model.predict_proba(X)[:,1]
     # Select interventions (Baseline)
     interactions['intervention'] = interactions.apply(select_intervention_baseline, axis=1)
@@ -252,300 +313,138 @@ def simulate_interventions_over_time_baseline(interactions, model, user_profiles
 # Main Comparison Function
 # -------------------------------
 
+class SimulationConfig:
+    """Configuration class for simulation parameters"""
+    def __init__(self):
+        self.num_users = 100
+        self.num_content = 100
+        self.time_steps = 10
+        self.random_seed = 42
+        self.test_size = 0.2
+        self.learning_rate = 0.1  # New parameter for learning effect
+        
+        # Intervention effectiveness parameters
+        self.base_effectiveness = {
+            'Standard Warning': 0.5,
+            'Informational Message': 0.5,
+            'Neutral Feedback': 0.5,
+            'Engagement Prompt': 0.5
+        }
+
+class PerformanceMetrics:
+    """Class to track and analyze simulation performance"""
+    def __init__(self):
+        self.metrics = {
+            'effectiveness_rates': [],
+            'susceptibility_changes': [],
+            'intervention_counts': {},
+            'topic_effectiveness': {},
+            'user_learning_rates': []
+        }
+    
+    def update_metrics(self, interactions, user_profiles):
+        """Update performance metrics after each time step"""
+        self.metrics['effectiveness_rates'].append(
+            safe_divide(
+                interactions['effective'].sum(),
+                interactions['susceptible'].sum()
+            )
+        )
+        
+        self.metrics['susceptibility_changes'].append(
+            user_profiles['susceptibility_score'].mean()
+        )
+        
+        # Update intervention counts
+        intervention_counts = interactions['intervention'].value_counts()
+        for intervention, count in intervention_counts.items():
+            self.metrics['intervention_counts'][intervention] = \
+                self.metrics['intervention_counts'].get(intervention, 0) + count
+    
+    def generate_report(self):
+        """Generate a comprehensive performance report"""
+        report = {
+            'average_effectiveness': np.mean(self.metrics['effectiveness_rates']),
+            'susceptibility_reduction': self.metrics['susceptibility_changes'][0] - 
+                                     self.metrics['susceptibility_changes'][-1],
+            'most_used_intervention': max(self.metrics['intervention_counts'].items(), 
+                                        key=lambda x: x[1])[0] if self.metrics['intervention_counts'] else None
+        }
+        return report
+
 def main_comparison():
-    # Parameters
-    num_users = 100  # Number of users
-    num_content = 100  # Number of content items
-    time_steps = 10  # Number of time steps to simulate
-
-    # Generate synthetic user profiles for both systems
-    print("Generating synthetic user profiles for Personalized and Baseline systems...")
-    user_profiles_personalized = generate_user_profiles(num_users)
-    user_profiles_baseline = user_profiles_personalized  # Separate profiles for baseline
-
-    # Generate synthetic content items (shared by both systems)
-    print("Generating synthetic content items...")
-    content_items = generate_content_items(num_content)
-
-    # Simulate interactions for both systems
-    print("\nSimulating interactions for Personalized system...")
-    interactions_personalized = simulate_interactions(user_profiles_personalized, content_items, time_steps)
+    # Initialize configuration
+    config = SimulationConfig()
     
-    print("\nSimulating interactions for Baseline system...")
-    interactions_baseline = interactions_personalized
-
-    # Train predictive models for both systems
-    print("\nTraining predictive model for Personalized system...")
-    model_personalized = train_model(interactions_personalized)
+    # Set up logging
+    logging.info("Starting simulation comparison")
     
-    print("\nTraining predictive model for Baseline system...")
-    model_baseline = model_personalized
-
-    # Initialize lists to store effectiveness metrics
-    effectiveness_personalized = []
-    total_susceptible_personalized = []
-    
-    effectiveness_baseline = []
-    total_susceptible_baseline = []
-    
-    # Lists to store average susceptibility scores
-    avg_susceptibility_personalized = []
-    avg_susceptibility_baseline = []
-    
-    # Lists for group comparisons (e.g., high vs. low CRT scores)
-    avg_sus_high_CRT_over_time = []
-    avg_sus_low_CRT_over_time = []
-    
-    # Initialize lists to collect all interactions after interventions
-    all_interactions_personalized = []
-    all_interactions_baseline = []
-    
-    effectiveness_rate_personalized = []
-    effectiveness_rate_baseline = []
-    
-    # Select a sample of users to track
-    sample_user_ids = user_profiles_personalized['user_id'].sample(5, random_state=42).tolist()
-    # Initialize a dictionary to store susceptibility over time
-    user_susceptibility_over_time = {user_id: [] for user_id in sample_user_ids}
-    
-    
-    print("\nSimulating interventions over time for both systems...")
-    for t in range(time_steps):
-        print(f"\n--- Time Step {t+1} ---")
+    try:
+        # Generate user profiles
+        user_profiles = UserProfile(config.num_users).profiles
         
-        # Personalized Interventions
-        interactions_t_pers = interactions_personalized[interactions_personalized['time_step'] == t]
-        interactions_t_pers, user_profiles_personalized, eff_pers, tot_sus_pers = simulate_interventions_over_time_personalized(interactions_t_pers, model_personalized, user_profiles_personalized)
-        effectiveness_personalized.append(eff_pers)
-        total_susceptible_personalized.append(tot_sus_pers)
-        all_interactions_personalized.append(interactions_t_pers)
+        # Generate content items
+        content_items = pd.DataFrame({
+            'content_id': range(config.num_content),
+            'topic': np.random.choice(['politics', 'health', 'science', 'technology'], config.num_content),
+            'complexity': np.random.rand(config.num_content),
+            'emotional_impact': np.random.rand(config.num_content),
+            'sentiment': np.random.choice(['positive', 'neutral', 'negative'], config.num_content),
+            'is_misinformation': np.random.choice([0, 1], config.num_content, p=[0.7, 0.3])
+        })
         
-        # Calculate effectiveness rate for personalized system
-        rate_pers = (eff_pers / tot_sus_pers) if tot_sus_pers > 0 else 0
-        effectiveness_rate_personalized.append(rate_pers)
+        # Initialize systems
+        personalized_system = InterventionSystem(is_personalized=True)
+        baseline_system = InterventionSystem(is_personalized=False)
         
-        # Baseline Interventions
-        interactions_t_base = interactions_baseline[interactions_baseline['time_step'] == t]
-        interactions_t_base, user_profiles_baseline, eff_base, tot_sus_base = simulate_interventions_over_time_baseline(interactions_t_base, model_baseline, user_profiles_baseline)
-        effectiveness_baseline.append(eff_base)
-        total_susceptible_baseline.append(tot_sus_base)
-        all_interactions_baseline.append(interactions_t_base)
+        # Initialize metrics
+        personalized_metrics = PerformanceMetrics()
+        baseline_metrics = PerformanceMetrics()
         
-        rate_base = (eff_base / tot_sus_base) if tot_sus_base > 0 else 0
-        effectiveness_rate_baseline.append(rate_base)
+        # Run simulations for each time step
+        for t in range(config.time_steps):
+            # Simulate interactions
+            interactions = simulate_interactions(user_profiles, content_items, 1)
+            
+            # Train model on current interactions
+            model_tuple = train_model(interactions)
+            
+            # Run personalized interventions
+            personalized_results, user_profiles_p, total_effective_p, total_susceptible_p = \
+                simulate_interventions_over_time_personalized(interactions, model_tuple, user_profiles.copy())
+            
+            # Update personalized metrics
+            personalized_metrics.update_metrics(personalized_results, user_profiles_p)
+            
+            # Run baseline interventions
+            baseline_results, user_profiles_b, total_effective_b, total_susceptible_b = \
+                simulate_interventions_over_time_baseline(interactions, model_tuple, user_profiles.copy())
+            
+            # Update baseline metrics
+            baseline_metrics.update_metrics(baseline_results, user_profiles_b)
         
-        # Calculate average susceptibility
-        avg_sus_pers = user_profiles_personalized['susceptibility_score'].mean()
-        avg_sus_base = user_profiles_baseline['susceptibility_score'].mean()
+        # Generate final reports
+        personalized_report = personalized_metrics.generate_report()
+        baseline_report = baseline_metrics.generate_report()
         
-        avg_susceptibility_personalized.append(avg_sus_pers)
-        avg_susceptibility_baseline.append(avg_sus_base)
+        # Print comparison results
+        print("\nFinal Results:")
+        print("Personalized System:")
+        print(f"Average Effectiveness: {personalized_report['average_effectiveness']:.2f}")
+        print(f"Susceptibility Reduction: {personalized_report['susceptibility_reduction']:.2f}")
+        print(f"Most Used Intervention: {personalized_report['most_used_intervention']}")
         
-        # Group comparisons based on CRT score
-        high_CRT_users = user_profiles_personalized[user_profiles_personalized['CRT_score'] >= 4]
-        low_CRT_users = user_profiles_personalized[user_profiles_personalized['CRT_score'] < 4]
+        print("\nBaseline System:")
+        print(f"Average Effectiveness: {baseline_report['average_effectiveness']:.2f}")
+        print(f"Susceptibility Reduction: {baseline_report['susceptibility_reduction']:.2f}")
+        print(f"Most Used Intervention: {baseline_report['most_used_intervention']}")
         
-        avg_sus_high_CRT_over_time.append(high_CRT_users['susceptibility_score'].mean())
-        avg_sus_low_CRT_over_time.append(low_CRT_users['susceptibility_score'].mean())
+        # Log results
+        logging.info("Simulation completed successfully")
         
-        # Track individual user susceptibility trajectories
-        for user_id in sample_user_ids:
-            sus_score = user_profiles_personalized.loc[user_profiles_personalized['user_id'] == user_id, 'susceptibility_score'].values[0]
-            user_susceptibility_over_time[user_id].append(sus_score)
-        
-        # Record initial susceptibility scores for low CRT users at t=0
-        if t == 0:
-            initial_susceptibility_low_CRT_pers = low_CRT_users['susceptibility_score'].tolist()
-            low_CRT_users_base = user_profiles_baseline[user_profiles_baseline['CRT_score'] < 4]
-            initial_susceptibility_low_CRT_base = low_CRT_users_base['susceptibility_score'].tolist()
-    
-    # After the loop ends, record the final susceptibility scores for low CRT users
-    low_CRT_users_final_pers = user_profiles_personalized[user_profiles_personalized['CRT_score'] < 4]
-    final_susceptibility_low_CRT_pers = low_CRT_users_final_pers['susceptibility_score'].tolist()
-    
-    low_CRT_users_final_base = user_profiles_baseline[user_profiles_baseline['CRT_score'] < 4]
-    final_susceptibility_low_CRT_base = low_CRT_users_final_base['susceptibility_score'].tolist()
-    
-    # Concatenate all interactions
-    interactions_personalized_all = pd.concat(all_interactions_personalized, ignore_index=True)
-    interactions_baseline_all = pd.concat(all_interactions_baseline, ignore_index=True)
-    
-    # Summary of Results
-    print("\n--- Summary of Intervention Effectiveness ---")
-    print("{:<10} {:<25} {:<25}".format('Time Step', 'Personalized Effective', 'Baseline Effective'))
-    for t in range(time_steps):
-        print("{:<10} {:<25} {:<25}".format(
-            t+1,
-            effectiveness_personalized[t],
-            effectiveness_baseline[t]
-        ))
-    
-    # Convert lists to numpy arrays
-    eff_rate_pers = np.array(effectiveness_rate_personalized)
-    eff_rate_base = np.array(effectiveness_rate_baseline)
-    
-    # Perform independent t-test
-    t_stat, p_value = ttest_ind(eff_rate_pers, eff_rate_base, equal_var=False)
-    
-    print(f"\nStatistical Comparison of Effectiveness Rates (t-test):")
-    print(f"T-statistic: {t_stat:.4f}")
-    print(f"P-value: {p_value:.4f}")
-    
-    alpha = 0.05  # Significance level
-    if p_value < alpha:
-        print("The difference in effectiveness rates is statistically significant.")
-    else:
-        print("The difference in effectiveness rates is not statistically significant.")
-    
-    # Optional: Perform Mann-Whitney U test
-    u_stat, p_value_mwu = mannwhitneyu(eff_rate_pers, eff_rate_base, alternative='two-sided')
-    
-    print(f"\nStatistical Comparison of Effectiveness Rates (Mann-Whitney U Test):")
-    print(f"U-statistic: {u_stat:.4f}")
-    print(f"P-value: {p_value_mwu:.4f}")
-    
-    if p_value_mwu < alpha:
-        print("The difference in effectiveness rates is statistically significant (Mann-Whitney U Test).")
-    else:
-        print("The difference in effectiveness rates is not statistically significant (Mann-Whitney U Test).")
-    
-    
-    # Calculate average effectiveness rates
-    avg_effectiveness_personalized = (sum(effectiveness_personalized) / sum(total_susceptible_personalized)) * 100
-    avg_effectiveness_baseline = (sum(effectiveness_baseline) / sum(total_susceptible_baseline)) * 100
-
-    print(f"\nAverage Effectiveness Rate (Personalized System): {avg_effectiveness_personalized:.2f}%")
-    print(f"Average Effectiveness Rate (Baseline System): {avg_effectiveness_baseline:.2f}%")
-    
-    
-    # Calculate intervention effectiveness rate on political content in the personalized system
-    political_interactions = interactions_personalized_all[interactions_personalized_all['topic'] == 'politics']
-    total_susceptible_political = political_interactions['susceptible'].sum()
-    total_effective_political = political_interactions['effective'].sum()
-    effectiveness_rate_political = (total_effective_political / total_susceptible_political) * 100 if total_susceptible_political > 0 else 0
-
-    print(f"\nIntervention Effectiveness Rate on Political Content (Personalized System): {effectiveness_rate_political:.2f}%")
-    
-    # Visualization
-
-    steps = range(1, time_steps + 1)
-    
-    # 1. Plot Effective Interventions Over Time
-    plt.figure(figsize=(12, 6))
-    plt.plot(steps, effectiveness_personalized, label='Personalized System', marker='o')
-    plt.plot(steps, effectiveness_baseline, label='Baseline System', marker='s')
-    plt.xlabel('Time Step')
-    plt.ylabel('Number of Effective Interventions')
-    plt.title('Comparison of Effective Interventions Over Time Between Personalized and Baseline Systems')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-    
-    
-    # 4. Distribution of Susceptibility Scores at Final Time Step
-    plt.figure(figsize=(12, 6))
-    sns.histplot(user_profiles_personalized['susceptibility_score'], bins=20, kde=True, label='Personalized', color='blue')
-    sns.histplot(user_profiles_baseline['susceptibility_score'], bins=20, kde=True, label='Baseline', color='orange', alpha=0.7)
-    plt.xlabel('Susceptibility Score')
-    plt.ylabel('Number of Users')
-    plt.title('Distribution of User Susceptibility Scores at Final Time Step')
-    plt.legend()
-    plt.show()
-    
-    # 5. Cumulative Effective Interventions Over Time
-    cumulative_effectiveness_personalized = np.cumsum(effectiveness_personalized)
-    cumulative_effectiveness_baseline = np.cumsum(effectiveness_baseline)
-    
-    plt.figure(figsize=(12, 6))
-    plt.plot(steps, cumulative_effectiveness_personalized, label='Personalized System', marker='o')
-    plt.plot(steps, cumulative_effectiveness_baseline, label='Baseline System', marker='s')
-    plt.xlabel('Time Step')
-    plt.ylabel('Cumulative Effective Interventions')
-    plt.title('Cumulative Effective Interventions Over Time')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-    
-    # 6. Intervention Effectiveness by Content Topic (Personalized System)
-    topic_effectiveness = interactions_personalized_all.groupby('topic')['effective'].sum()
-    topic_total = interactions_personalized_all.groupby('topic')['susceptible'].sum()
-    topic_effectiveness_rate = (topic_effectiveness / topic_total) * 100
-    
-
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    topic_effectiveness_rate.plot(kind='bar')
-    plt.xlabel('Content Topic')
-    plt.ylabel('Intervention Effectiveness (%)')
-    plt.title('Intervention Effectiveness by Content Topic (Personalized System)')
-    plt.show()
-    
-    topic_effectiveness = interactions_baseline_all.groupby('topic')['effective'].sum()
-    topic_total = interactions_baseline_all.groupby('topic')['susceptible'].sum()
-    topic_effectiveness_rate = (topic_effectiveness / topic_total) * 100
-    
-        # Plotting
-    plt.figure(figsize=(10, 6))
-    topic_effectiveness_rate.plot(kind='bar')
-    plt.xlabel('Content Topic')
-    plt.ylabel('Intervention Effectiveness (%)')
-    plt.title('Intervention Effectiveness by Content Topic (Baseline System)')
-    plt.show()
-    
-    # 7. Effectiveness of Different Interventions in Personalized System
-    intervention_effectiveness = interactions_personalized_all.groupby('intervention')['effective'].sum()
-    intervention_total = interactions_personalized_all.groupby('intervention')['susceptible'].sum()
-    intervention_effectiveness_rate = (intervention_effectiveness / intervention_total) * 100
-
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    intervention_effectiveness_rate.plot(kind='bar')
-    plt.xlabel('Intervention Type')
-    plt.ylabel('Effectiveness (%)')
-    plt.title('Effectiveness of Different Interventions in Personalized System')
-    plt.show()
-    
-        # 7. Effectiveness of Different Interventions in Personalized System
-    intervention_effectiveness = interactions_baseline_all.groupby('intervention')['effective'].sum()
-    intervention_total = interactions_baseline_all.groupby('intervention')['susceptible'].sum()
-    intervention_effectiveness_rate = (intervention_effectiveness / intervention_total) * 100
-
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    intervention_effectiveness_rate.plot(kind='bar')
-    plt.xlabel('Intervention Type')
-    plt.ylabel('Effectiveness (%)')
-    plt.title('Effectiveness of Different Interventions in Personalized System')
-    plt.show()
-    
-
-    
-
-    
-    # Calculate statistics for personalized system
-    total_interactions_pers = len(interactions_personalized_all)
-    not_susceptible_pers = (interactions_personalized_all['susceptible'] == 0).sum()
-    susceptible_pers = (interactions_personalized_all['susceptible'] == 1).sum()
-    effective_interventions_pers = (interactions_personalized_all['effective'] == 1).sum()
-
-    # Calculate statistics for baseline system
-    total_interactions_base = len(interactions_baseline_all)
-    not_susceptible_base = (interactions_baseline_all['susceptible'] == 0).sum()
-    susceptible_base = (interactions_baseline_all['susceptible'] == 1).sum()
-    effective_interventions_base = (interactions_baseline_all['effective'] == 1).sum()
-
-    print("\n--- Interaction Statistics ---")
-    print("Personalized System:")
-    print(f"Total Interactions: {total_interactions_pers}")
-    print(f"Not Susceptible to Misinformation: {not_susceptible_pers}")
-    print(f"Susceptible to Misinformation: {susceptible_pers}")
-    print(f"Effective Interventions: {effective_interventions_pers}")
-
-    print("\nBaseline System:")
-    print(f"Total Interactions: {total_interactions_base}")
-    print(f"Not Susceptible to Misinformation: {not_susceptible_base}")
-    print(f"Susceptible to Misinformation: {susceptible_base}")
-    print(f"Effective Interventions: {effective_interventions_base}")
+    except Exception as e:
+        logging.error(f"Simulation failed: {e}")
+        raise
 
 # -------------------------------
 # Execute the Comparison
